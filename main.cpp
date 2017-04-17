@@ -19,8 +19,6 @@ const EGLint attribs[] = {
     EGL_DEPTH_SIZE, 24,
     EGL_STENCIL_SIZE, 8,
     EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-    //	EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-    //	EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
     EGL_NONE
 };
 
@@ -102,11 +100,12 @@ int main() {
     struct gbm_device *gbm;
     const char *ver;
     struct kms kms;
-    struct gbm_surface *gs;
+    struct gbm_surface *gbmSurface;
     struct gbm_bo *bo;
     uint32_t handle, stride;
     drmModeCrtcPtr saved_crtc;
 
+    // 1. Get Display
     fd = open(drm_device_name, O_RDWR);
     if (fd < 0) {
         /* Probably permissions error */
@@ -127,6 +126,7 @@ int main() {
         return eglGetError();
     }
 
+    // 2. Initialize EGL
     if ( eglInitialize(eglDisplay, &verMajor, &verMinor) == EGL_FALSE || eglGetError() != EGL_SUCCESS ) {
         LOGE("egl init error ! %d", eglGetError());
         return eglGetError();
@@ -142,79 +142,74 @@ int main() {
     LOGD("* EGL_VERSION = %s (have %d configs)", ver, numConfigs);
 
     if (!setup_kms(fd, &kms)) {
-        eglTerminate(eglDisplay);
-        gbm_device_destroy(gbm);
         LOGE("setup kms failed !");
         return -1;
     }
     eglBindAPI(EGL_OPENGL_ES_API);
 
+    // 3. Choose Config
     if (!eglChooseConfig(eglDisplay, attribs, &eglConfig, 1, &n) || n != 1) {
         LOGE("failed to choose argb config");
-        eglTerminate(eglDisplay);
-        gbm_device_destroy(gbm);
         return eglGetError();
     }
 
+    // 4. Create Surface
+    gbmSurface = gbm_surface_create(gbm, kms.mode.hdisplay, kms.mode.vdisplay,
+                            GBM_FORMAT_XRGB8888,
+                            GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+    fprintf(stderr, "%s %d gbmSurface=%p\n",__func__,__LINE__, gbmSurface);
+    eglSurface = eglCreateWindowSurface(eglDisplay, eglConfig, gbmSurface, NULL);
+
+
+    // 5. Create Context
     eglContext = eglCreateContext(eglDisplay, eglConfig, EGL_NO_CONTEXT, NULL);
     if (eglContext == NULL) {
         LOGE("failed to create context");
-        eglTerminate(eglDisplay);
-        gbm_device_destroy(gbm);
         return eglGetError();
     }
 
-    gs = gbm_surface_create(gbm, kms.mode.hdisplay, kms.mode.vdisplay,
-                            GBM_FORMAT_XRGB8888,
-                            GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
-    fprintf(stderr, "%s %d gs=%p\n",__func__,__LINE__, gs);
-    eglSurface = eglCreateWindowSurface(eglDisplay, eglConfig, gs, NULL);
-
     if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
         LOGE("failed to make context current");
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        gbm_device_destroy(gbm);
         return eglGetError();
     }
 
     //glViewport(0, 0, (GLint) 800, (GLint) 1280);
+    glClearColor(1.0, 0.5, 0.5, 1);
     glClear(GL_COLOR_BUFFER_BIT);
-    glClearColor(1, 0, 1, 1.0);
-    glFinish();
+
     eglSwapBuffers(eglDisplay, eglSurface);
 
-    bo = gbm_surface_lock_front_buffer(gs);
+    bo = gbm_surface_lock_front_buffer(gbmSurface);
     handle = gbm_bo_get_handle(bo).u32;
     stride = gbm_bo_get_stride(bo);
     int width = gbm_bo_get_width(bo);
     int height = gbm_bo_get_height(bo);
 
     printf("handle=%d, stride=%d rect=%dx%d\n", handle, stride, width, height);
-    //void *buffer = malloc(800*1280 * 4);
 
-    // memset(buffer, 0xf0, 800*1280*4);
-//   gbm_bo_write(bo, buffer, 800*1280*4);
-    // free(buffer);
+    /*void *buffer = malloc(800*1280 * 4);
+    memset(buffer, 0xf0, 800*1280*4);
+    gbm_bo_write(bo, buffer, 800*1280*4);
+    free(buffer);*/
 
-    ret = drmModeAddFB(fd,
-                       kms.mode.hdisplay, kms.mode.vdisplay,
+    ret = drmModeAddFB(fd, kms.mode.hdisplay, kms.mode.vdisplay,
                        24, 32, stride, handle, &kms.fb_id);
     if (ret) {
-        fprintf(stderr, "failed to create fb\n");
+        LOGE("failed to create fb");
         //goto rm_fb;
         return -1;
     }
 
     saved_crtc = drmModeGetCrtc(fd, kms.encoder->crtc_id);
-    if (saved_crtc == NULL)
+    if (saved_crtc == NULL) {
+        LOGE("failed to crtc: %m");
         return -1;
-        //goto rm_fb;
+    }
 
     ret = drmModeSetCrtc(fd, kms.encoder->crtc_id, kms.fb_id, 0, 0,
                          &kms.connector->connector_id, 1, &kms.mode);
     if (ret) {
-        fprintf(stderr, "failed to set mode: %m\n");
+        LOGE("failed to set mode: %m");
         //goto free_saved_crtc;
         return -1;
     }
@@ -225,7 +220,7 @@ int main() {
                          saved_crtc->x, saved_crtc->y,
                          &kms.connector->connector_id, 1, &saved_crtc->mode);
     if (ret) {
-        fprintf(stderr, "failed to restore crtc: %m\n");
+        LOGE("failed to restore crtc: %m");
     }
 
     return 0;

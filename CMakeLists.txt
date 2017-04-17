@@ -4,9 +4,9 @@ project(glsample)
 set(CMAKE_CXX_STANDARD 11)
 
 set(SOURCE_FILES main.cpp)
-include_directories(native/include)
+include_directories(./native/include)
 
-link_directories(native/lib)
+link_directories(./native/lib)
 
 add_executable(glsample ${SOURCE_FILES})
 
