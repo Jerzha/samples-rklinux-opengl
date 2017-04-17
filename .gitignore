@@ -1,0 +1,7 @@
+Makefile
+cmake-build-debug/
+.idea/
+CMakeFiles/
+CMakeCache.txt
+glsample
+glsample.cbp
