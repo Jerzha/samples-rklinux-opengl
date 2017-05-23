@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <GLES/gl.h>
 #include <GLES/egl.h>
 #include <gbm.h>
