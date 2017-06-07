@@ -5,3 +5,5 @@ CMakeFiles/
 CMakeCache.txt
 glsample
 glsample.cbp
+glsample_gbm
+glsample_wl
