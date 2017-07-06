@@ -4,8 +4,15 @@
 #include <stdio.h>
 #include <gbm.h>
 #include <xf86drmMode.h>
+#include <xf86drm.h>
+
+#define GL_GLEXT_PROTOTYPES
 #include <GLES/gl.h>
 #include <GLES/egl.h>
+#include <GLES/glext.h>
+
+#include <GLES3/gl32.h>
+#include <GLES3/gl3platform.h>
 
 #define LOGD(...) fprintf(stdout, __VA_ARGS__); printf("\n")
 #define LOGE(...) fprintf(stderr, __VA_ARGS__); printf("\n")
@@ -107,7 +114,11 @@ int main() {
     drmModeCrtcPtr saved_crtc;
 
     // 1. Get Display
+#if 0
     fd = open(drm_device_name, O_RDWR);
+#else
+    fd = drmOpen("rockchip", 0);
+#endif
     if (fd < 0) {
         /* Probably permissions error */
         LOGE("couldn't open %s, skipping", drm_device_name);
@@ -163,7 +174,11 @@ int main() {
 
 
     // 5. Create Context
-    eglContext = eglCreateContext(eglDisplay, eglConfig, EGL_NO_CONTEXT, NULL);
+    static const EGLint context_attribs[] = {
+            EGL_CONTEXT_CLIENT_VERSION, 2,
+            EGL_NONE
+    };
+    eglContext = eglCreateContext(eglDisplay, eglConfig, EGL_NO_CONTEXT, context_attribs);
     if (eglContext == NULL) {
         LOGE("failed to create context");
         return eglGetError();
@@ -173,6 +188,12 @@ int main() {
         LOGE("failed to make context current");
         return eglGetError();
     }
+
+    /*GLuint shader = glCreateShader(GL_VERTEX_SHADER);
+    if (!shader) {
+        LOGE("ERR : shader == %u !!!!!!!!!", shader);
+        abort();
+    }*/
 
     //glViewport(0, 0, (GLint) 800, (GLint) 1280);
     glClearColor(1.0, 0.5, 0.5, 1);
